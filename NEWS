@@ -1,3 +1,11 @@
+mlr_2.6:
+- added a generic classification via clustering wrapper that clusters training
+  examples and assigns class labels/probabilities according to the class
+  distribution of the cluster a new example is assigned to
+
+- new functions
+-- makeClassificationViaClusteringWrapper
+
 mlr_2.5:
 - we have (somewhat experimental) support for multilabel classification.
   so we now have a task, a new baselearner (rFerns),
