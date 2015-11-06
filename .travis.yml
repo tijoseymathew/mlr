@@ -31,6 +31,7 @@ r_binary_packages:
     - clusterSim
     - clValid
     - cmaes
+    - copulaedas
     - CoxBoost
     - crs
     - Cubist
@@ -49,6 +50,7 @@ r_binary_packages:
     - FNN
     - frbs
     - FSelector
+    - GA
     - gbm
     - GenSA
     - ggplot2
@@ -81,6 +83,7 @@ r_binary_packages:
     - plyr
     # - PMCMR
     - pROC
+    - pso
     - randomForest
     - randomForestSRC
     - reshape2
