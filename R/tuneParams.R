@@ -66,6 +66,15 @@ tuneParams = function(learner, task, resampling, measures, par.set, control, sho
   assertClass(task, classes = "Task")
   measures = checkMeasures(measures, learner)
   assertClass(par.set, classes = "ParamSet")
+  
+  # Extract task-dependent parameters
+  for (i in which(getParamTypes(par.set)=="function")) {
+    para = par.set$pars[[i]]$default(task)
+    if (!testClass(para, classes = "Param"))
+      stopf("%s param function did not return a valid param for task %s", par.set$pars[[i]]$id, getTaskId(task))
+    par.set$pars[[i]] <- para
+  }
+  
   # FIXME: must be removed later, see PH issue #52
   checkParamSet(par.set)
   assertClass(control, classes = "TuneControl")
