@@ -69,10 +69,13 @@ tuneParams = function(learner, task, resampling, measures, par.set, control, sho
   
   # Extract task-dependent parameters
   for (i in which(getParamTypes(par.set)=="function")) {
-    para = par.set$pars[[i]]$default(task)
-    if (!testClass(para, classes = "Param"))
-      stopf("%s param function did not return a valid param for task %s", par.set$pars[[i]]$id, getTaskId(task))
-    par.set$pars[[i]] <- para
+    tryCatch({
+      para = par.set$pars[[i]]$default(task)
+      assertClass(para, classes = "Param")
+      par.set$pars[[i]] <- para
+    }, error = function(e){
+      stopf("%s param function failed for task %s with message: %s", par.set$pars[[i]]$id, getTaskId(task), e)
+    })
   }
   
   # FIXME: must be removed later, see PH issue #52
