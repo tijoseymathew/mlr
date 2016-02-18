@@ -45,14 +45,19 @@
 #'
 #' \dontrun{
 #' # we optimize the SVM over 3 kernels simultanously
-#' # note how we use dependent params (requires = ...) and iterated F-racing here
+#' # note how we use dependent params (requires = ...), task-dependent params 
+#' (makeFunctionParam), and iterated F-racing here
 #' ps = makeParamSet(
 #'   makeNumericParam("C", lower = -12, upper = 12, trafo = function(x) 2^x),
 #'   makeDiscreteParam("kernel", values = c("vanilladot", "polydot", "rbfdot")),
 #'   makeNumericParam("sigma", lower = -12, upper = 12, trafo = function(x) 2^x,
 #'     requires = quote(kernel == "rbfdot")),
-#'   makeIntegerParam("degree", lower = 2L, upper = 5L,
-#'     requires = quote(kernel == "polydot"))
+#'   makeFunctionParam("degree",
+#'                     function(task){
+#'                       nFeatures = sum(task$task.desc$n.feat)
+#'                       makeIntegerParam("degree", lower = 2L, upper = nFeatures, 
+#'                                        require = quote(kernel == "polydot"))
+#'                     })
 #' )
 #' print(ps)
 #' ctrl = makeTuneControlIrace(maxExperiments = 200L)
