@@ -47,15 +47,15 @@ makePrediction.RegrTaskDesc = function(task.desc, row.names, id, truth, predict.
     data$response = y[, 1L]
     data$se = y[, 2L]
   }
-
+  
   makeS3Obj(c("PredictionRegr", "Prediction"),
-    predict.type = predict.type,
-    data = setRowNames(as.data.frame(filterNull(data)), row.names),
-    threshold = NA_real_,
-    task.desc = task.desc,
-    time = time,
-    error = error,
-    dump = dump
+            predict.type = predict.type,
+            data = setRowNames(as.data.frame(filterNull(data)), row.names),
+            threshold = NA_real_,
+            task.desc = task.desc,
+            time = time,
+            error = error,
+            dump = dump
   )
 }
 
@@ -78,17 +78,17 @@ makePrediction.ClassifTaskDesc = function(task.desc, row.names, id, truth, predi
     if (sum(indices) > 0)
       names(data)[indices] = stri_paste("prob.", colnames(y))
   }
-
+  
   p = makeS3Obj(c("PredictionClassif", "Prediction"),
-    predict.type = predict.type,
-    data = setRowNames(data, row.names),
-    threshold = NA_real_,
-    task.desc = task.desc,
-    time = time,
-    error = error,
-    dump = dump
+                predict.type = predict.type,
+                data = setRowNames(data, row.names),
+                threshold = NA_real_,
+                task.desc = task.desc,
+                time = time,
+                error = error,
+                dump = dump
   )
-
+  
   if (predict.type == "prob") {
     # set default threshold to 1/k
     if (is.null(predict.threshold)) {
@@ -110,15 +110,15 @@ makePrediction.MultilabelTaskDesc = function(task.desc, row.names, id, truth, pr
   } else {
     data$prob = y
   }
-
+  
   p = makeS3Obj(c("PredictionMultilabel", "Prediction"),
-    predict.type = predict.type,
-    data = setRowNames(as.data.frame(filterNull(data)), row.names),
-    threshold = NA_real_,
-    task.desc = task.desc,
-    time = time,
-    error = error,
-    dump = dump
+                predict.type = predict.type,
+                data = setRowNames(as.data.frame(filterNull(data)), row.names),
+                threshold = NA_real_,
+                task.desc = task.desc,
+                time = time,
+                error = error,
+                dump = dump
   )
   if (predict.type == "prob") {
     # set default threshold to 0.5
@@ -139,15 +139,15 @@ makePrediction.SurvTaskDesc = function(task.desc, row.names, id, truth, predict.
   data$truth.time = truth[, 1L]
   data$truth.event = truth[, 2L]
   data$response = y
-
+  
   makeS3Obj(c("PredictionSurv", "Prediction"),
-    predict.type = predict.type,
-    data = setRowNames(as.data.frame(filterNull(data)), row.names),
-    threshold = NA_real_,
-    task.desc = task.desc,
-    time = time,
-    error = error,
-    dump = dump
+            predict.type = predict.type,
+            data = setRowNames(as.data.frame(filterNull(data)), row.names),
+            threshold = NA_real_,
+            task.desc = task.desc,
+            time = time,
+            error = error,
+            dump = dump
   )
 }
 
@@ -166,13 +166,13 @@ makePrediction.ClusterTaskDesc = function(task.desc, row.names, id, truth, predi
     data = as.data.frame(filterNull(data))
   }
   p = makeS3Obj(c("PredictionCluster", "Prediction"),
-    predict.type = predict.type,
-    data = setRowNames(data, row.names),
-    threshold = NA_real_,
-    task.desc = task.desc,
-    time = time,
-    error = error,
-    dump = dump
+                predict.type = predict.type,
+                data = setRowNames(data, row.names),
+                threshold = NA_real_,
+                task.desc = task.desc,
+                time = time,
+                error = error,
+                dump = dump
   )
   return(p)
 }
@@ -182,15 +182,45 @@ makePrediction.CostSensTaskDesc = function(task.desc, row.names, id, truth, pred
   data = namedList(c("id", "response"))
   data$id = id
   data$response = y
-
+  
   makeS3Obj(c("PredictionCostSens", "Prediction"),
-    predict.type = predict.type,
-    data = setRowNames(as.data.frame(filterNull(data)), row.names),
-    threshold = NA_real_,
-    task.desc = task.desc,
-    time = time,
-    error = error,
-    dump = dump
+            predict.type = predict.type,
+            data = setRowNames(as.data.frame(filterNull(data)), row.names),
+            threshold = NA_real_,
+            task.desc = task.desc,
+            time = time,
+            error = error,
+            dump = dump
+  )
+}
+
+#' @export
+makePrediction.PHMRegrTaskDesc = function(task.desc, row.names, id, truth, predict.type, predict.threshold = NULL, y, time, error = NA_character_, dump = NULL) {
+  assertClass(y, "data.frame")
+  phm.cols = c(task.desc$seq.id, task.desc$order.by)
+  assertSetEqual(colnames(y), c("y", phm.cols))
+  
+  data = namedList(c("id", phm.cols, "truth", "response"))
+  data$id = id
+  data[[task.desc$seq.id]] = y[[task.desc$seq.id]]
+  data[[task.desc$order.by]] = y[[task.desc$order.by]]
+  data$truth = truth
+  
+  # EXTENSION: Should support prediction of range?
+  if (predict.type == "response") {
+    data$response = y$y
+  } else {
+    stopf("Currently %s not supported. Future extension.", predict.type)
+  }
+  
+  makeS3Obj(c("PredictionPHMRegr", "Prediction"),
+            predict.type = predict.type,
+            data = setRowNames(as.data.frame(filterNull(data)), row.names),
+            threshold = NA_real_,
+            task.desc = task.desc,
+            time = time,
+            error = error,
+            dump = dump
   )
 }
 

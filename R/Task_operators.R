@@ -278,9 +278,9 @@ getTaskData = function(task, subset = NULL, features, target.extra = FALSE, reco
   checkTask(task, "Task")
   checkTaskSubset(subset, size = task$task.desc$size)
   assertLogical(target.extra)
-
+  
   task.features = getTaskFeatureNames(task)
-
+  
   # if supplied check if the input is right and always convert 'features'
   # to character vec
   if (!missing(features)) {
@@ -288,22 +288,22 @@ getTaskData = function(task, subset = NULL, features, target.extra = FALSE, reco
       checkIntegerish(features, lower = 1L, upper = length(task.features)),
       checkLogical(features), checkCharacter(features)
     )
-
+    
     if (!is.character(features))
       features = task.features[features]
   }
-
+  
   tn = task$task.desc$target
-
+  
   indexHelper = function(df, i, j, drop = TRUE) {
     switch(2L * is.null(i) + is.null(j) + 1L,
-      df[i, j, drop = drop],
-      df[i, , drop = drop],
-      df[, j, drop = drop],
-      df
+           df[i, j, drop = drop],
+           df[i, , drop = drop],
+           df[, j, drop = drop],
+           df
     )
   }
-
+  
   if (target.extra) {
     if (missing(features))
       features = task.features
@@ -316,7 +316,7 @@ getTaskData = function(task, subset = NULL, features, target.extra = FALSE, reco
       features = NULL
     else
       features = union(features, tn)
-
+    
     res = indexHelper(task$env$data, subset, features, drop = FALSE)
     if (recode.target %nin% c("no", "surv")) {
       res[, tn] = recodeY(res[, tn], type = recode.target, task$task.desc)
@@ -345,34 +345,34 @@ recodeSurvivalTimes = function(y, from, to) {
   is.neg.infinite = function(x) is.infinite(x) & x < 0
   is.pos.infinite = function(x) is.infinite(x) & x > 0
   lookup = setNames(c("left", "right", "interval2"), c("lcens", "rcens", "icens"))
-
+  
   if (from == to)
     return(Surv(y[, 1L], y[, 2L], type = lookup[to]))
   if (setequal(c(from, to), c("lcens", "rcens")))
     stop("Converting left censored to right censored data (or vice versa) is not possible")
-
+  
   switch(from,
-    rcens = {
-      time1 = y[, 1L]
-      time2 = ifelse(y[, 2L], y[, 1L], Inf)
-    },
-    lcens = {
-      time1 = ifelse(y[, 2L], y[, 1L], -Inf)
-      time2 = y[, 1L]
-    },
-    icens = {
-      if (to == "lcens") {
-        if (!all(is.neg.infinite(y[, 1L] | y[, 1L] == y[, 2L])))
-          stop("Could not convert interval2 survival data to left censored data")
-        time1 = y[, 2L]
-        time2 = is.infinite(y[, 1L])
-      } else {
-        if (!all(is.pos.infinite(y[, 2L] | y[, 2L] == y[, 1L])))
-          stop("Could not convert interval2 survival data to right censored data")
-        time1 = y[, 1L]
-        time2 = is.infinite(y[, 2L])
-      }
-    }
+         rcens = {
+           time1 = y[, 1L]
+           time2 = ifelse(y[, 2L], y[, 1L], Inf)
+         },
+         lcens = {
+           time1 = ifelse(y[, 2L], y[, 1L], -Inf)
+           time2 = y[, 1L]
+         },
+         icens = {
+           if (to == "lcens") {
+             if (!all(is.neg.infinite(y[, 1L] | y[, 1L] == y[, 2L])))
+               stop("Could not convert interval2 survival data to left censored data")
+             time1 = y[, 2L]
+             time2 = is.infinite(y[, 1L])
+           } else {
+             if (!all(is.pos.infinite(y[, 2L] | y[, 2L] == y[, 1L])))
+               stop("Could not convert interval2 survival data to right censored data")
+             time1 = y[, 1L]
+             time2 = is.infinite(y[, 2L])
+           }
+         }
   )
   Surv(time1, time2, type = lookup[to])
 }
@@ -446,14 +446,14 @@ changeData = function(task, data, costs, weights) {
   td = task$task.desc
   # FIXME: this is bad style but I see no other way right now
   task$task.desc = switch(td$type,
-    "classif" = makeClassifTaskDesc(td$id, data, td$target, task$weights, task$blocking, td$positive),
-    "regr" = makeRegrTaskDesc(td$id, data, td$target, task$weights, task$blocking),
-    "cluster" = makeClusterTaskDesc(td$id, data, task$weights, task$blocking),
-    "surv" = makeSurvTaskDesc(td$id, data, td$target, task$weights, task$blocking, td$censoring),
-    "costsens" = makeCostSensTaskDesc(td$id, data, td$target, task$blocking, costs),
-    "multilabel" = makeMultilabelTaskDesc(td$id, data, td$target, td$weights, task$blocking)
+                          "classif" = makeClassifTaskDesc(td$id, data, td$target, task$weights, task$blocking, td$positive),
+                          "regr" = makeRegrTaskDesc(td$id, data, td$target, task$weights, task$blocking),
+                          "cluster" = makeClusterTaskDesc(td$id, data, task$weights, task$blocking),
+                          "surv" = makeSurvTaskDesc(td$id, data, td$target, task$weights, task$blocking, td$censoring),
+                          "costsens" = makeCostSensTaskDesc(td$id, data, td$target, task$blocking, costs),
+                          "multilabel" = makeMultilabelTaskDesc(td$id, data, td$target, td$weights, task$blocking),
+                          "phmregr" = makePHMRegrTaskDesc(td$id, data, td$target, td$seq.id, td$order.by, task$weights, task$blocking)
   )
-
   return(task)
 }
 
