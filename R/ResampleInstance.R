@@ -51,6 +51,12 @@ makeResampleInstance = function(desc, task, size, ...) {
     assertClass(task, classes = "Task")
     size = getTaskSize(task)
     blocking = task$blocking
+    if (testClass(task, classes = "PHMRegrTask")) {
+      catf("Experimental PHMRegrTask resampling")
+      td = getTaskDesc(task)
+      seq.ids = getTaskData(task, features = td$seq.id, target.extra = TRUE)[[1]][, 1]
+      blocking = as.factor(seq.ids)
+    }
   } else {
     task = NULL
     blocking = factor()

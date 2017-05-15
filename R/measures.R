@@ -129,7 +129,7 @@ measureMSE = function(truth, response) {
 #' @rdname measures
 #' @format none
 rmse = makeMeasure(id = "rmse", minimize = TRUE, best = 0, worst = Inf,
-  properties = c("regr", "req.pred", "req.truth"),
+  properties = c("regr", "phmregr", "req.pred", "req.truth"),
   name = "Root mean squared error",
   note = "The RMSE is aggregated as sqrt(mean(rmse.vals.on.test.sets^2)). If you don't want that, you could also use `test.mean`.",
   fun = function(task, model, pred, feats, extra.args) {
