@@ -36,7 +36,7 @@ makePHMARMAWrapper = function(learner, lag.ar = 0L, lag.ma = 0L, fill.arma = "me
   ps = makeParamSet(
     makeIntegerLearnerParam(id = "lag.ar", lower = 0L, default = 0L),
     makeIntegerLearnerParam(id = "lag.ma", lower = 0L, default = 0L),
-    makeDiscreteLearnerParam(id = "fill.arma", values = c("mean", "zeroo"), default = "mean")
+    makeDiscreteLearnerParam(id = "fill.arma", values = c("mean", "zero"), default = "mean")
   )
   lrn = makeBaseWrapper(id = paste(learner$id, "phmarma", sep = "."),
                         type = "phmregr", next.learner = learner,
@@ -54,7 +54,7 @@ trainLearner.PHMARMAWrapper = function(.learner, .task, .subset, .weights = NULL
   assertClass(.task, "PHMRegrTask")
   td = .task$task.desc
   args = list(seq.id = td$seq.id, order.by = td$order.by, target = td$target,
-              lag.ar = lag.ar, lag.ma = lag.ma, fill.arma = "mean")
+              lag.ar = lag.ar, lag.ma = lag.ma, fill.arma = fill.arma)
   arma = makeARMADF(getTaskData(.task, .subset), args)
   
   task = makePHMRegrTask(id = paste0(getTaskId(.task), ".PHMARMA"),
@@ -116,7 +116,7 @@ predictLearner.PHMARMAWrapper = function(.learner, .model, .newdata, ...) {
       ret[y, ':=' (y = i.y), on = c(sid, tid)]
       # Shift initial values
       arVals = arVals[arVals[[sid]] %in% y[[sid]], ]
-      arVals = cbind(arVals[, cns, drop = FALSE][, -1, drop=FALSE], y$y)
+      arVals = cbind(y$y, arVals[, cns, drop = FALSE][, -length(cns), drop=FALSE])
       colnames(arVals) = cns
       arVals[[sid]] = y[[sid]]
     }
