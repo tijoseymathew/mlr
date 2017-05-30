@@ -4,7 +4,8 @@
 \alias{makePHMARMAWrapper}
 \title{PHM with ARMA features}
 \usage{
-makePHMARMAWrapper(learner, lag.ar = 0L, lag.ma = 0L, fill.arma = "mean")
+makePHMARMAWrapper(learner, lag.ar = 0L, lag.ma = 0L, fill.arma = "mean",
+  ar.stage = "single-step")
 }
 \arguments{
 \item{learner}{[\code{\link{Learner}} | \code{character(1)}]\cr
@@ -18,6 +19,15 @@ Default in 0}
 \item{lag.ma}{[\code{integer(1)}]\cr
 Moving Average (feature) lag to be incorporated
 Default is 0}
+
+\item{fill.arma}{[\code{character(1)}]\cr
+Value to be filled at begining of lagged columns
+\code{"zero"} for 0 and \code{"mean"} for mean value}
+
+\item{ar.stage}{[\code{character(1)}]\cr
+The stage of using auto-regressive features
+\code{"single-step"} for using auto-regressive \code{target} values
+\code{"two-step"} for using auto-regressive features of \code{target} predicted in first step using only \code{features}}
 }
 \value{
 [\code{\link{Learner}}].

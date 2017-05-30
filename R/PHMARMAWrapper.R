@@ -10,6 +10,13 @@
 #' @param lag.ma [\code{integer(1)}]\cr
 #'   Moving Average (feature) lag to be incorporated
 #'   Default is 0
+#' @param fill.arma [\code{character(1)}]\cr
+#'   Value to be filled at begining of lagged columns
+#'   \code{"zero"} for 0 and \code{"mean"} for mean value
+#' @param ar.stage [\code{character(1)}]\cr
+#'   The stage of using auto-regressive features
+#'   \code{"single-step"} for using auto-regressive \code{target} values
+#'   \code{"two-step"} for using auto-regressive features of \code{target} predicted in first step using only \code{features}
 #' @template ret_learner
 #' @export
 #' @family wrapper
@@ -18,7 +25,7 @@
 #' lrn = makePHMARMAWrapper(lrn)
 #' mod = train(lrn, phm.task)
 #' predictions = predict(mod, newdata = getTaskData(phm.task))
-makePHMARMAWrapper = function(learner, lag.ar = 0L, lag.ma = 0L, fill.arma = "mean") {
+makePHMARMAWrapper = function(learner, lag.ar = 0L, lag.ma = 0L, fill.arma = "mean", ar.stage = "single-step") {
   checkLearner(learner, "phmregr")
   pv = list()
   if (!missing(lag.ar)) {
@@ -33,10 +40,15 @@ makePHMARMAWrapper = function(learner, lag.ar = 0L, lag.ma = 0L, fill.arma = "me
     fill.arma = assertChoice(fill.arma, c("mean", "zero"))
     pv$fill.arma = fill.arma
   }
+  if (!missing(ar.stage)) { # single-step: Output is lagged, two-step: Prediction of MA will be lagged
+    ar.stage = assertChoice(ar.stage, c("single-step", "two-step"))
+    pv$ar.stage = ar.stage
+  }
   ps = makeParamSet(
     makeIntegerLearnerParam(id = "lag.ar", lower = 0L, default = 0L),
     makeIntegerLearnerParam(id = "lag.ma", lower = 0L, default = 0L),
-    makeDiscreteLearnerParam(id = "fill.arma", values = c("mean", "zero"), default = "mean")
+    makeDiscreteLearnerParam(id = "fill.arma", values = c("mean", "zero"), default = "mean"),
+    makeDiscreteLearnerParam(id = "ar.stage", values = c("single-step", "two-step"), default = "single-step")
   )
   lrn = makeBaseWrapper(id = paste(learner$id, "phmarma", sep = "."),
                         type = "phmregr", next.learner = learner,
@@ -50,20 +62,50 @@ makePHMARMAWrapper = function(learner, lag.ar = 0L, lag.ma = 0L, fill.arma = "me
 #' @export
 trainLearner.PHMARMAWrapper = function(.learner, .task, .subset, .weights = NULL, 
                                        lag.ar = 0L, lag.ma = 0L, fill.arma = "mean",
+                                       ar.stage = "single-step", 
                                        ...) {
   assertClass(.task, "PHMRegrTask")
   td = .task$task.desc
   args = list(seq.id = td$seq.id, order.by = td$order.by, target = td$target,
-              lag.ar = lag.ar, lag.ma = lag.ma, fill.arma = fill.arma)
-  arma = makeARMADF(getTaskData(.task, .subset), args)
+              lag.ma = lag.ma, fill.arma = fill.arma)
+  if (ar.stage == "single-step") {
+    args$lag.ar = lag.ar
+    arma = makeARMADF(getTaskData(.task, .subset), args)
+    
+    task = makePHMRegrTask(id = paste0(getTaskId(.task), ".PHMARMA"),
+                           data = arma$data, target = td$target,
+                           seq.id = td$seq.id, order.by = td$order.by)
+    
+    n.mdl = train(.learner$next.learner, task, weights = .weights) 
+    arma.args = arma$args
+  } else if (ar.stage == "two-step") {
+    tskData = getTaskData(.task, .subset)
+    n.mdl = list()
+    arma.args = list()
+    
+    args$lag.ar = 0L
+    arma = makeARMADF(tskData, args)
+    task = makePHMRegrTask(id = paste0(getTaskId(.task), ".PHMARMA_Step1"),
+                           data = arma$data, target = td$target,
+                           seq.id = td$seq.id, order.by = td$order.by)
+    n.mdl[[1]] = train(.learner$next.learner, task, weights = .weights)
+    arma.args[[1]] = arma$args
+    # Stage-2
+    y = tskData[[td$target]]
+    tskData[[td$target]] = predict(n.mdl[[1]], task)$data$response
+    # FIXME: By def arma ar will not use value at t. Not logical here
+    args$lag.ar = lag.ar
+    arma = makeARMADF(tskData, args)
+    arma$data[[td$target]] = y 
+    task = makePHMRegrTask(id = paste0(getTaskId(.task), ".PHMARMA_Step1"),
+                           data = arma$data, target = td$target,
+                           seq.id = td$seq.id, order.by = td$order.by)
+    n.mdl[[2]] = train(.learner$next.learner, task, weights = .weights)
+    arma.args[[2]] = arma$args
+  }
   
-  task = makePHMRegrTask(id = paste0(getTaskId(.task), ".PHMARMA"),
-                         data = arma$data, target = td$target,
-                         seq.id = td$seq.id, order.by = td$order.by)
-  
-  n.mdl = train(.learner$next.learner, task, weights = .weights)
   m = makeWrappedModel.Learner(learner = .learner, 
-                               learner.model = list(regr.model = n.mdl, arma.args = arma$args),
+                               learner.model = list(regr.model = n.mdl, arma.args = arma.args, ar.stage = ar.stage),
                                task.desc = getTaskDesc(.task),
                                subset = .subset,
                                features = getTaskFeatureNames(.task),
@@ -79,7 +121,23 @@ predictLearner.PHMARMAWrapper = function(.learner, .model, .newdata, ...) {
   
   mdl = .model$learner.model$next.model$learner.model
   arma.args = mdl$arma.args
-  if (arma.args$lag.ar == 0 ) {
+  if (mdl$ar.stage == "two-step") {
+    data = makeARMADF(.newdata, arma.args[[1]])$data
+    ret = do.call( predictLearner, 
+                   c( list(.learner = .learner$next.learner, 
+                           .model = mdl$regr.model[[1]], 
+                           .newdata = data), 
+                      args) )
+    .newdata[[arma.args[[1]]$target]] = ret$y
+    data = makeARMADF(.newdata, arma.args[[2]])$data
+    data[[arma.args[[1]]$target]] = NULL
+    ret = do.call( predictLearner, 
+                   c( list(.learner = .learner$next.learner, 
+                           .model = mdl$regr.model[[2]], 
+                           .newdata = data), 
+                      args) )
+    
+  } else if (arma.args$lag.ar == 0 ) {
     data = makeARMADF(.newdata, arma.args)$data
     ret = do.call(predictLearner, 
                   c( list(.learner = .learner$next.learner, 
@@ -87,7 +145,8 @@ predictLearner.PHMARMAWrapper = function(.learner, .model, .newdata, ...) {
                           .newdata = data), 
                      args)    
     )  
-  } else {
+  } 
+  else {
     sid = arma.args$seq.id; tid = arma.args$order.by; tar = arma.args$target
     ret = as.data.table(.newdata[, c(sid, tid)])
     ret$y = numeric()
@@ -96,7 +155,7 @@ predictLearner.PHMARMAWrapper = function(.learner, .model, .newdata, ...) {
     ma.args = mdl$arma.args
     ma.args$lag.ar = 0
     dat = as.data.table(makeARMADF(.newdata, ma.args)$data)
-
+    
     dat[order(get(tid)), .time := 1:.N, by = list(get(sid))]
     # AR initialization
     cns = paste0(tar, "_lag_", 1:arma.args$lag.ar)
