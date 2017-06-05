@@ -36,6 +36,7 @@ Other partial_dependence: \code{\link{generatePartialDependenceData}},
   \code{\link{plotPartialDependence}}
 
 Other plot: \code{\link{plotBMRBoxplots}},
+  \code{\link{plotBMRPrediction}},
   \code{\link{plotBMRRanksAsBarChart}},
   \code{\link{plotBMRSummary}},
   \code{\link{plotCalibration}},

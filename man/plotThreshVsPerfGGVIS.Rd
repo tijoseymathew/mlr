@@ -45,6 +45,7 @@ plotThreshVsPerfGGVIS(pvs)
 }
 \seealso{
 Other plot: \code{\link{plotBMRBoxplots}},
+  \code{\link{plotBMRPrediction}},
   \code{\link{plotBMRRanksAsBarChart}},
   \code{\link{plotBMRSummary}},
   \code{\link{plotCalibration}},

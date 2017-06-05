@@ -19,7 +19,7 @@
 #'   Default is 1.
 #' @return The ggplot2 object.
 #' @export
-plotPrediction = function(prediction, linesize = 1, greyscale = FALSE, seq.ids = 1) {
+plotPrediction = function(prediction, linesize = 1, seq.ids = 1) {
 
   assertClass(prediction, "Prediction")
   if (!checkClass(prediction, "PredictionPHMRegr"))

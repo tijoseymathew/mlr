@@ -45,7 +45,8 @@ of the resampling strategy, faceted by the \code{task.id}.
 # see benchmark
 }
 \seealso{
-Other plot: \code{\link{plotBMRRanksAsBarChart}},
+Other plot: \code{\link{plotBMRPrediction}},
+  \code{\link{plotBMRRanksAsBarChart}},
   \code{\link{plotBMRSummary}},
   \code{\link{plotCalibration}},
   \code{\link{plotCritDifferences}},
@@ -77,6 +78,7 @@ Other benchmark: \code{\link{BenchmarkResult}},
   \code{\link{getBMRTaskDescs}},
   \code{\link{getBMRTaskIds}},
   \code{\link{getBMRTuneResults}},
+  \code{\link{plotBMRPrediction}},
   \code{\link{plotBMRRanksAsBarChart}},
   \code{\link{plotBMRSummary}},
   \code{\link{plotCritDifferences}},

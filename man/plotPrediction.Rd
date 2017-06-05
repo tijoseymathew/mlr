@@ -4,7 +4,7 @@
 \alias{plotPrediction}
 \title{Visualize a prediction object. Right now supports only PHMRegr tasks}
 \usage{
-plotPrediction(prediction, linesize = 1, greyscale = FALSE, seq.ids = 1)
+plotPrediction(prediction, linesize = 1, seq.ids = 1)
 }
 \arguments{
 \item{prediction}{[\code{Prediction}]\cr

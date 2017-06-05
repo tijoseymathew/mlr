@@ -31,6 +31,7 @@ Visualizes data size (percentage used for model) vs. performance measure(s).
 }
 \seealso{
 Other plot: \code{\link{plotBMRBoxplots}},
+  \code{\link{plotBMRPrediction}},
   \code{\link{plotBMRRanksAsBarChart}},
   \code{\link{plotBMRSummary}},
   \code{\link{plotCalibration}},

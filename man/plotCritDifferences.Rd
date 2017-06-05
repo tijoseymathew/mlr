@@ -39,6 +39,7 @@ JMLR, 2006
 }
 \seealso{
 Other plot: \code{\link{plotBMRBoxplots}},
+  \code{\link{plotBMRPrediction}},
   \code{\link{plotBMRRanksAsBarChart}},
   \code{\link{plotBMRSummary}},
   \code{\link{plotCalibration}},
@@ -71,6 +72,7 @@ Other benchmark: \code{\link{BenchmarkResult}},
   \code{\link{getBMRTaskIds}},
   \code{\link{getBMRTuneResults}},
   \code{\link{plotBMRBoxplots}},
+  \code{\link{plotBMRPrediction}},
   \code{\link{plotBMRRanksAsBarChart}},
   \code{\link{plotBMRSummary}},
   \code{\link{reduceBatchmarkResults}}
