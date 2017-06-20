@@ -42,14 +42,14 @@ makeRLearner.regr.ksvm.robust = function() {
 
 #' @export
 trainLearner.regr.ksvm.robust = function(.learner, .task, .subset, .weights = NULL, 
-                                         degree, offset, scale, sigma, order, length, lambda, 
+                                         degree, offset, scale, sigma, order, 
                                          scaled = TRUE, gamma = 0, ...) {
   task = subsetTask(.task, .subset)
   scaleMdl = getKSVMScaling(task, scaled)
   task = scaleMdl$task
   
   kFn = getKSVMKFunction(task,
-                         degree, offset, scale, sigma, order, length, lambda, 
+                         degree, offset, scale, sigma, order, 
                          ...)
   
   tr.df = getTaskData(task, target.extra = TRUE)$data
@@ -133,7 +133,7 @@ KSVMScaling.y = function(model, predres) {
   return(predres)
 }
 
-getKSVMKFunction = function(task, degree, offset, scale, sigma, order, length, lambda, ...) {
+getKSVMKFunction = function(task, degree, offset, scale, sigma, order, ...) {
   args = list(...)
   kernel = ifelse("kernel" %in% names(args), args$kernel, "rbfdot")
   if("scaled" %in% names(args)) {
@@ -143,7 +143,7 @@ getKSVMKFunction = function(task, degree, offset, scale, sigma, order, length, l
   
   td = getTaskDesc(task)
   # Extract kernel function
-  kpar = learnerArgsToControl(list, degree, offset, scale, sigma, order, length, lambda)
+  kpar = learnerArgsToControl(list, degree, offset, scale, sigma, order)
   if (is.character(kernel)) {
     kernel = match.arg(kernel, c("rbfdot", "polydot", "tanhdot", "vanilladot", "laplacedot", "besseldot", "anovadot", "splinedot", "matrix"))
     
