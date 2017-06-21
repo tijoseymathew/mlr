@@ -17,7 +17,7 @@
 makePHMHIWrapper = function(learner) {
   checkLearner(learner, "phmregr")
   ps = makeParamSet(
-    makeFunctionLearnerParam("hi_function", tunable = FALSE, default = makeLinearHI())
+    makeFunctionLearnerParam("hi_function", tunable = FALSE, default = makeHIFunction())
   )
   lrn = makeBaseWrapper(id = paste(learner$id, "hiFn", sep = "."),
                         type = "phmregr", next.learner = learner,
@@ -30,7 +30,7 @@ makePHMHIWrapper = function(learner) {
 
 #' @export
 trainLearner.PHMHIWrapper = function(.learner, .task, .subset, .weights = NULL, 
-                                     hi_function = makeLinearHI(), ...) {
+                                     hi_function = makeHIFunction(), ...) {
   assertClass(.task, "PHMRegrTask")
   assertFunction(hi_function, args = "task")
   
@@ -97,7 +97,7 @@ plotPHMHI = function(learner, task, seq.ids = "all") {
   mdl = train(learner, task)
   
   hi_function = ifelse("hi_function" %in% names(getHyperPars(learner)),
-                       getHyperPars(learner)$hi_function, makeLinearHI())
+                       getHyperPars(learner)$hi_function, makeHIFunction())
   
   pre = predictLearner.PHMHIWrapper(learner, mdl, getTaskData(task, target.extra = TRUE)$data,
                                     ret.HI = TRUE)
@@ -126,7 +126,10 @@ plotPHMHI = function(learner, task, seq.ids = "all") {
 #' HI from features on a window at start and end of each seq.id
 #' 
 #' @param type [\code{character(1)}]\cr
-#'   Either "linear" or "exponential"
+#'   rul_scaling: Scales RUL to [0, 1] for each unit
+#'   rul_limiting: Limits RUL to multiplier and then scales to [0, 1]
+#'   linear: Extrapolates linear model to features fitted on ends for each unit
+#'   exponential: Fits a[exp(-b*RUL+c)-exp(c)] on result of linear
 #' @param start.n [\code{numeric(1)}]\cr
 #'   Number of points at begining to be modelled as HI 1. Default 1
 #' @param end.n [\code{numeric(1)}]\cr
@@ -135,20 +138,72 @@ plotPHMHI = function(learner, task, seq.ids = "all") {
 #'   Should the features be scaled. Default True
 #' @param multiplier [\code{numeric(1)}]
 #'   Multiplier to be used during prediction. If NULL mean of train RUL will be used. Defaults to NULL
+#' @param exp_tol [\code{numeric(1)}]\cr
+#'   Warning will be produced if sse error while fitting exponential model is larger than this value
+#' @param exp_max_iter [\code{numeric(1)}]\cr
+#'   Maximum number of iteration for exponential function with random initializations
 #' @export
-makeLinearHI = function(type = "linear", start.n = 1, end.n = 1, scaled = TRUE, multiplier = NULL) {
-  linFit = function(trDT, teDT) {
-    mdl = lm(hi~., trDT)
+makeHIFunction = function(type = "rul_scaling", start.n = 1, end.n = 1, scaled = TRUE, multiplier = NULL,
+                          exp_tol = 0.3, exp_max_iter = 100) {
+  # Per unit HI functions (for one seq.id, in sorted order.by)
+  # Both data tables contain RUL column which may or may not be used
+  #> trDT : Data table of ends with column hi to be used for training and rest as features
+  #> teDT : Data table with features
+  rul_scaling = function(trDT, teDT) {
+    teDT$RUL/max(teDT$RU)
+  }
+  rul_limiting = function(trDT, teDT) {
+    sapply(teDT$RUL, min, multiplier)/multiplier
+  }
+  linear = function(trDT, teDT) {
+    mdl = lm(hi~.-RUL, trDT)
     predict(mdl, teDT)
   }
+  exponential = function(trDT, teDT) {
+    x = teDT$RUL
+    y = linear(trDT, teDT)
+    # Exponential function defintions
+    hi = expression(a*(exp(-b*x+c)-exp(c)))
+    er = function(p, x, y) {
+      a = p$a; b = p$b; c = p$c
+      y-eval(hi)
+    }
+    ja = function(p, x, y) {
+      a = p$a; b = p$b; c = p$c
+      -c(eval(D(hi, "a")), eval(D(hi, "b")), eval(D(hi, "c")))
+    }
+    b_sse = Inf
+    for (iter in seq(exp_max_iter)) { # Better initialization can avoid this?
+      nlsFit = nls.lm(par = list(a=runif(1), b=runif(1),c=runif(1)),
+                      fn = er, jac = ja, x = x, y = y,
+                      control = nls.lm.control(maxfev = exp_max_iter, maxiter = exp_max_iter))
+      sse = sqrt(mean(er(nlsFit$par, x, y)^2))
+      if (!is.na(sse) & sse < b_sse) {
+        b_mdl = nlsFit
+        b_sse = sse
+      }
+    }
+    if (b_sse > exp_tol)
+      warning(sprintf("Exponential HI did not converge. sse=%.3f", b_sse))
+    a = b_mdl$par$a; b = b_mdl$par$b; c = b_mdl$par$c
+    eval(hi)
+  }
+  hiFns = list(rul_scaling = rul_scaling, rul_limiting = rul_limiting,
+               linear = linear, exponential = exponential)
+  assertChoice(type, names(hiFns))
+  
   # Returned function
   function(task) {
     td = getTaskDesc(task)
     tid = td$order.by; sid = td$seq.id; tar = td$target
     
-    dat = setDT( getTaskData(task, target.extra = TRUE)$data )
+    if (is.null(multiplier))
+      multiplier = mean(getTaskTargets(task))
+    
+    dat = as.data.table(getTaskData(task))
+    names(dat)[names(dat) == tar] = "RUL"
     if (scaled) {
-      cols = setdiff(names(dat), c(tid, sid))
+      cols = setdiff(names(dat), c(tid, sid, "RUL"))
       dat[, (cols) := lapply(.SD, scale), .SDcols = cols]
     }
     
@@ -157,11 +212,8 @@ makeLinearHI = function(type = "linear", start.n = 1, end.n = 1, scaled = TRUE, 
       marginDT = rbind(head(.SD, start.n), tail(.SD, end.n))
       marginDT$hi = rep(c(1, 0), times = c(start.n, end.n))
       marginDT[[tid]] = NULL
-      
-      linFit(marginDT, .SD)
+      hiFns[[type]](marginDT, .SD)
     }, by = sid]
-    if (is.null(multiplier))
-      multiplier = mean(getTaskTargets(task))
     list(hi = dat$hi, hi2rulFn = function(data) multiplier * data$y)
   }
 }
