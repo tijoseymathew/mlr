@@ -4,7 +4,7 @@
 \alias{plotPHMHI}
 \title{PHM HI model exploratory plots}
 \usage{
-plotPHMHI(learner, task, seq.ids = "all")
+plotPHMHI(learner, task, hi_functions = "all", seq.ids = "all")
 }
 \arguments{
 \item{learner}{[\code{\link{Learner}} | \code{character(1)}]\cr
@@ -14,7 +14,10 @@ If you pass a string the learner will be created via \code{\link{makeLearner}}.}
 \item{task}{[\code{\link{Task}}]\cr
 The task.}
 
-\item{seq.ids}{Sequence id to be plotted. Default "all"}
+\item{hi_functions}{Either a named list of functions or "all" for all functions in makeHIFunction}
+
+\item{seq.ids}{[\code{character}]\cr
+Sequence id to be plotted. Default "all"}
 }
 \description{
 Plots the created synthtic HI and prediction made by learner on a given task

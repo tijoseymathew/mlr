@@ -87,34 +87,49 @@ predictLearner.PHMHIWrapper = function(.learner, .model, .newdata,
 #' 
 #' @template arg_learner
 #' @template arg_task
-#' @param seq.ids
+#' @param hi_functions
+#'   Either a named list of functions or "all" for all functions in makeHIFunction
+#' @param seq.ids [\code{character}]\cr
 #'   Sequence id to be plotted. Default "all"
 #' @export
-plotPHMHI = function(learner, task, seq.ids = "all") {
+plotPHMHI = function(learner, task, hi_functions = "all", seq.ids = "all") {
   assertClass(learner, "PHMHIWrapper")
   assertCharacter(seq.ids)
-  
-  mdl = train(learner, task)
-  
-  hi_function = ifelse("hi_function" %in% names(getHyperPars(learner)),
-                       getHyperPars(learner)$hi_function, makeHIFunction())
-  
-  pre = predictLearner.PHMHIWrapper(learner, mdl, getTaskData(task, target.extra = TRUE)$data,
-                                    ret.HI = TRUE)
-  names(pre)[names(pre) == "y"] = "response"
-  pre$truth = hi_function(task)$hi
-  setDT(pre)
+  if (identical(hi_functions, "all"))
+    hi_functions = list(rul_scaling = makeHIFunction("rul_scaling"),
+                        rul_limiting = makeHIFunction("rul_limiting"),
+                        linear = makeHIFunction("linear"),
+                        exponential = makeHIFunction("exponential"))
+  if ("hi_function" %in% names(getHyperPars(learner)))
+      hi_functions[["learner.par"]] = getHyperPars(learner)$hi_function
+  assertList(hi_functions, any.missing = FALSE, types = "function")
   
   td = getTaskDesc(task)
-  tid = td$order.by; sid = td$seq.id
-  if (identical(seq.ids, "all"))
-    seq.ids = unique(pre[[sid]])
-  pre = pre[get(sid) %in% seq.ids]
-  pre = melt(pre, id.vars = c(sid, tid), measure.vars = c("truth", "response"),
-             variable.name = "type", value.name = "HI")
+  tid = td$order.by; sid = td$seq.id  
+  pltDT = as.data.table( getTaskData(task, features = c(sid, tid),
+                                     target.extra = TRUE)$data )
   
-  ggplot(pre, aes_string(x=tid, y="HI", col="type"))+
-    geom_line()+
+  for (ix in seq_along(hi_functions)) {
+    fn = hi_functions[[ix]]; nm = names(hi_functions)[ix]
+    pltDT[[paste0(nm, "_computed")]] = fn(task)$hi
+    
+    learner = setHyperPars(learner, hi_function = fn)
+    mdl = train(learner, task)
+    pre = predictLearner.PHMHIWrapper(learner, mdl, getTaskData(task, target.extra = TRUE)$data,
+                                      ret.HI = TRUE)
+    pltDT[[paste0(nm, "_predicted")]] = pre$y
+  }
+  
+  if (identical(seq.ids, "all"))
+    seq.ids = unique(pltDT[[sid]])
+  pltDT = pltDT[get(sid) %in% seq.ids]
+  pltDT = melt(pltDT, id.vars = c(sid, tid), variable.name = "HI_Function", value.name = "HI")
+  sp = strsplit(as.character(pltDT$HI_Function), "_")
+  pltDT$HI_Function = sapply(sp, function(sp) paste0(sp[-length(sp)], collapse = "_"))
+  pltDT$type = sapply(sp, function(sp) sp[length(sp)])
+  
+  ggplot(pltDT, aes_string(x=tid, y="HI", col="HI_Function"))+
+    geom_line(aes(linetype = type))+
     facet_grid(paste0(sid, "~."))
 }
 
@@ -149,17 +164,17 @@ makeHIFunction = function(type = "rul_scaling", start.n = 1, end.n = 1, scaled =
   # Both data tables contain RUL column which may or may not be used
   #> trDT : Data table of ends with column hi to be used for training and rest as features
   #> teDT : Data table with features
-  rul_scaling = function(trDT, teDT) {
+  rul_scaling = function(trDT, teDT, multiplier) {
     teDT$RUL/max(teDT$RU)
   }
-  rul_limiting = function(trDT, teDT) {
+  rul_limiting = function(trDT, teDT, multiplier) {
     sapply(teDT$RUL, min, multiplier)/multiplier
   }
-  linear = function(trDT, teDT) {
+  linear = function(trDT, teDT, multiplier) {
     mdl = lm(hi~.-RUL, trDT)
     predict(mdl, teDT)
   }
-  exponential = function(trDT, teDT) {
+  exponential = function(trDT, teDT, multiplier) {
     x = teDT$RUL
     y = linear(trDT, teDT)
     # Exponential function defintions
@@ -212,7 +227,7 @@ makeHIFunction = function(type = "rul_scaling", start.n = 1, end.n = 1, scaled =
       marginDT = rbind(head(.SD, start.n), tail(.SD, end.n))
       marginDT$hi = rep(c(1, 0), times = c(start.n, end.n))
       marginDT[[tid]] = NULL
-      hiFns[[type]](marginDT, .SD)
+      hiFns[[type]](marginDT, .SD, multiplier)
     }, by = sid]
     list(hi = dat$hi, hi2rulFn = function(data) multiplier * data$y)
   }
