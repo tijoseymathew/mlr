@@ -11,10 +11,8 @@ makePHMHIWrapper(learner)
 The learner.
 If you pass a string the learner will be created via \code{\link{makeLearner}}.}
 
-\item{hiFns}{[\code{list(2)}]\cr
-List with trainFn and predictFn for HI model.
-trainFn: Function that returns a model and health index for each observation in task
-predictFn: Function that computes the RUL for data predicted using arg_learner}
+\item{hi_function}{[\code{function(task)}]\cr
+Function that returns hi: computed HI for task and hi2rulFn: function to compute RUL from HI}
 }
 \value{
 [\code{\link{Learner}}].

@@ -4,10 +4,8 @@
 #' Wraps a PHM learner that trains to target a given health index that is scaled back during prediction
 #'
 #' @template arg_learner
-#' @param hiFns [\code{list(2)}]\cr
-#'   List with trainFn and predictFn for HI model.
-#'   trainFn: Function that returns a model and health index for each observation in task
-#'   predictFn: Function that computes the RUL for data predicted using arg_learner
+#' @param hi_function [\code{function(task)}]\cr
+#'   Function that returns hi: computed HI for task and hi2rulFn: function to compute RUL from HI
 #' @template ret_learner
 #' @export
 #' @family wrapper
@@ -19,7 +17,7 @@
 makePHMHIWrapper = function(learner) {
   checkLearner(learner, "phmregr")
   ps = makeParamSet(
-    makeUntypedLearnerParam("hiFn", tunable = FALSE)
+    makeFunctionLearnerParam("hi_function", tunable = FALSE, default = makeLinearHI())
   )
   lrn = makeBaseWrapper(id = paste(learner$id, "hiFn", sep = "."),
                         type = "phmregr", next.learner = learner,
@@ -32,17 +30,17 @@ makePHMHIWrapper = function(learner) {
 
 #' @export
 trainLearner.PHMHIWrapper = function(.learner, .task, .subset, .weights = NULL, 
-                                     hiFns = linearHI(), ...) {
+                                     hi_function = makeLinearHI(), ...) {
   assertClass(.task, "PHMRegrTask")
-  assertFunction(hiFns$trainFn, args = "task")
-  assertFunction(hiFns$predictFn, args = c("model", "data"))
+  assertFunction(hi_function, args = "task")
   
   task = subsetTask(.task, .subset)
-  hi.op = hiFns$trainFn(task)
-  assertNumeric(hi.op$hi, len = getTaskSize(task), any.missing = FALSE)
+  hiMdl = hi_function(task)
+  assertNumeric(hiMdl$hi, len = getTaskSize(task), any.missing = FALSE)
+  assertFunction(hiMdl$hi2rulFn, args = "data")
   
   data = getTaskData(task, target.extra = TRUE)$data
-  data$.hi = hi.op$hi
+  data$.hi = hiMdl$hi
   td = getTaskDesc(task)
   task = makePHMRegrTask(id = paste0(getTaskId(.task), ".hi"),
                          data = data, target = ".hi",
@@ -51,7 +49,7 @@ trainLearner.PHMHIWrapper = function(.learner, .task, .subset, .weights = NULL,
   
   m = makeWrappedModel.Learner(learner = .learner, 
                                learner.model = list(next.model = next.mdl, 
-                                                    hi.model = hi.op$model, predictFn = hiFns$predictFn),
+                                                    hi2rulFn = hiMdl$hi2rulFn),
                                task.desc = getTaskDesc(.task),
                                subset = .subset,
                                features = getTaskFeatureNames(.task),
@@ -61,7 +59,9 @@ trainLearner.PHMHIWrapper = function(.learner, .task, .subset, .weights = NULL,
 }
 
 #' @export
-predictLearner.PHMHIWrapper = function(.learner, .model, .newdata, ...) {
+predictLearner.PHMHIWrapper = function(.learner, .model, .newdata, 
+                                       ret.HI = FALSE, # Convinence parameter used for plotting
+                                       ...) {
   args = removeFromDots(names(.learner$par.vals), ...)
   
   mdl = .model$learner.model$next.model$learner.model
@@ -70,12 +70,53 @@ predictLearner.PHMHIWrapper = function(.learner, .model, .newdata, ...) {
                          .model = mdl$next.model,
                          .newdata = .newdata), 
                     args) )
-  y = mdl$predictFn(mdl$hi.model, ret)
+  if (ret.HI)
+    return(ret)
+  y = mdl$hi2rulFn(ret)
   assertNumeric(y, len = nrow(.newdata), any.missing = FALSE)
   ret$y = y 
   ret
 }
 
+# HI Model Plot -----------------------------------------------------------
+
+#' @title PHM HI model exploratory plots
+#' 
+#' @description 
+#' Plots the created synthtic HI and prediction made by learner on a given task
+#' 
+#' @template arg_learner
+#' @template arg_task
+#' @param seq.ids
+#'   Sequence id to be plotted. Default "all"
+#' @export
+plotPHMHI = function(learner, task, seq.ids = "all") {
+  assertClass(learner, "PHMHIWrapper")
+  assertCharacter(seq.ids)
+  
+  mdl = train(learner, task)
+  
+  hi_function = ifelse("hi_function" %in% names(getHyperPars(learner)),
+                       getHyperPars(learner)$hi_function, makeLinearHI())
+  
+  pre = predictLearner.PHMHIWrapper(learner, mdl, getTaskData(task, target.extra = TRUE)$data,
+                                    ret.HI = TRUE)
+  names(pre)[names(pre) == "y"] = "response"
+  pre$truth = hi_function(task)$hi
+  setDT(pre)
+  
+  td = getTaskDesc(task)
+  tid = td$order.by; sid = td$seq.id
+  if (identical(seq.ids, "all"))
+    seq.ids = unique(pre[[sid]])
+  pre = pre[get(sid) %in% seq.ids]
+  pre = melt(pre, id.vars = c(sid, tid), measure.vars = c("truth", "response"),
+             variable.name = "type", value.name = "HI")
+  
+  ggplot(pre, aes_string(x=tid, y="HI", col="type"))+
+    geom_line()+
+    facet_grid(paste0(sid, "~."))
+}
 
 # HI Functions ------------------------------------------------------------
 
@@ -95,12 +136,13 @@ predictLearner.PHMHIWrapper = function(.learner, .model, .newdata, ...) {
 #' @param multiplier [\code{numeric(1)}]
 #'   Multiplier to be used during prediction. If NULL mean of train RUL will be used. Defaults to NULL
 #' @export
-linearHI = function(type = "linear", start.n = 1, end.n = 1, scaled = TRUE, multiplier = NULL) {
-  linFn = function(trDT, teDT) {
+makeLinearHI = function(type = "linear", start.n = 1, end.n = 1, scaled = TRUE, multiplier = NULL) {
+  linFit = function(trDT, teDT) {
     mdl = lm(hi~., trDT)
     predict(mdl, teDT)
   }
-  trainFn = function(task) {
+  # Returned function
+  function(task) {
     td = getTaskDesc(task)
     tid = td$order.by; sid = td$seq.id; tar = td$target
     
@@ -116,15 +158,10 @@ linearHI = function(type = "linear", start.n = 1, end.n = 1, scaled = TRUE, mult
       marginDT$hi = rep(c(1, 0), times = c(start.n, end.n))
       marginDT[[tid]] = NULL
       
-      linFn(marginDT, .SD)
+      linFit(marginDT, .SD)
     }, by = sid]
     if (is.null(multiplier))
       multiplier = mean(getTaskTargets(task))
-    list(model = multiplier, hi = dat$hi)
+    list(hi = dat$hi, hi2rulFn = function(data) multiplier * data$y)
   }
-  
-  predictFn = function(model, data) {
-    data$y * model
-  }
-  list(trainFn = trainFn, predictFn = predictFn)
 }
