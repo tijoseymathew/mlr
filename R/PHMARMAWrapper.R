@@ -25,25 +25,8 @@
 #' lrn = makePHMARMAWrapper(lrn)
 #' mod = train(lrn, phm.task)
 #' predictions = predict(mod, newdata = getTaskData(phm.task))
-makePHMARMAWrapper = function(learner, lag.ar = 0L, lag.ma = 0L, fill.arma = "mean", ar.stage = "single-step") {
+makePHMARMAWrapper = function(learner) {
   checkLearner(learner, "phmregr")
-  pv = list()
-  if (!missing(lag.ar)) {
-    lag.ar = asInt(lag.ar, lower = 0L)
-    pv$lag.ar = lag.ar
-  }
-  if (!missing(lag.ma)) {
-    lag.ma = asInt(lag.ma, lower = 0L)
-    pv$lag.ma = lag.ma
-  }
-  if (!missing(fill.arma)) {
-    fill.arma = assertChoice(fill.arma, c("mean", "zero"))
-    pv$fill.arma = fill.arma
-  }
-  if (!missing(ar.stage)) { # single-step: Output is lagged, two-step: Prediction of MA will be lagged
-    ar.stage = assertChoice(ar.stage, c("single-step", "two-step"))
-    pv$ar.stage = ar.stage
-  }
   ps = makeParamSet(
     makeIntegerLearnerParam(id = "lag.ar", lower = 0L, default = 0L),
     makeIntegerLearnerParam(id = "lag.ma", lower = 0L, default = 0L),
@@ -52,7 +35,7 @@ makePHMARMAWrapper = function(learner, lag.ar = 0L, lag.ma = 0L, fill.arma = "me
   )
   lrn = makeBaseWrapper(id = paste(learner$id, "phmarma", sep = "."),
                         type = "phmregr", next.learner = learner,
-                        par.set = ps, par.vals = pv,
+                        par.set = ps,
                         learner.subclass = "PHMARMAWrapper",
                         model.subclass = "PHMARMAModel")
   lrn$properties = learner$properties
