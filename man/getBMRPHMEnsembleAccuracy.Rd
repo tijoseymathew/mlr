@@ -5,7 +5,8 @@
 \title{Compute accuracy table of bmr PHMEnsemble prediction being within given probability bounds
 Assumes a Gaussian distribution of predictions}
 \usage{
-getBMRPHMEnsembleAccuracy(bmr, task, p_range = 0.9, only_last = TRUE)
+getBMRPHMEnsembleAccuracy(bmr, learner.ids, task, p_range = 0.9,
+  only_last = TRUE)
 }
 \description{
 Compute accuracy table of bmr PHMEnsemble prediction being within given probability bounds

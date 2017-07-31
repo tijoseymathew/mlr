@@ -6,7 +6,7 @@
 Only last prediction for each seq.id will be plotted
 WARNING: May take a lot of time, consider passing a small task}
 \usage{
-plotBMRPHMEnsembleDistribution(bmr, task, seq.ids = 1)
+plotBMRPHMEnsembleDistribution(bmr, learner.ids, task, seq.ids = 1)
 }
 \description{
 Plot BMRPHMEnsemble predictions as a distribution

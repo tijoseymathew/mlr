@@ -5,7 +5,7 @@
 \title{Helper function to get prediction from each ensemble learner in a benchmark test
 WARNING: May take a lot of time, consider passing a small task}
 \usage{
-getBMRPHMEnsemblePredictions(bmr, task)
+getBMRPHMEnsemblePredictions(bmr, learner.ids = getBMRLearnerIds(bmr), task)
 }
 \description{
 Helper function to get prediction from each ensemble learner in a benchmark test

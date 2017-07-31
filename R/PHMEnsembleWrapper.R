@@ -91,10 +91,10 @@ predictPHMEnsemble = function(model, newdata, ...) {
 #' Helper function to get prediction from each ensemble learner in a benchmark test
 #' WARNING: May take a lot of time, consider passing a small task
 #' @export
-getBMRPHMEnsemblePredictions = function(bmr, task) {
+getBMRPHMEnsemblePredictions = function(bmr, learner.ids = getBMRLearnerIds(bmr), task) {
   assertClass(bmr, "BenchmarkResult")
-  ids = getBMRLearnerIds(bmr)
-  ret = lapply(ids, function(x) {
+  assertSubset(learner.ids, getBMRLearnerIds(bmr))
+  ret = lapply(learner.ids, function(x) {
     m = bmr$results$cmapss[[x]]$models[[1]]$learner.model$next.model
     p = as.data.table(predictPHMEnsemble(m, task))
     p[, learner.id := x]
@@ -106,7 +106,7 @@ getBMRPHMEnsemblePredictions = function(bmr, task) {
 #' Only last prediction for each seq.id will be plotted
 #' WARNING: May take a lot of time, consider passing a small task
 #' @export
-plotBMRPHMEnsembleDistribution = function(bmr, task, seq.ids = 1) {
+plotBMRPHMEnsembleDistribution = function(bmr, learner.ids, task, seq.ids = 1) {
   checkTask(task, "PHMRegrTask")
   td = getTaskDesc(task)
   sid = td$seq.id; tid = td$order.by
@@ -118,7 +118,7 @@ plotBMRPHMEnsembleDistribution = function(bmr, task, seq.ids = 1) {
     seq.ids = sample(u_sids, round(length(u_sids) * seq.ids))
   }
   task = subsetTask(task, t_s.ids %in% seq.ids)
-  plotDT = as.data.table( getBMRPHMEnsemblePredictions(bmr, task) )
+  plotDT = as.data.table( getBMRPHMEnsemblePredictions(bmr, learner.ids, task) )
   plotDT = plotDT[, .SD[get(tid) == max(get(tid))], by = sid]
   rCols = c("learner.id", "truth", tid, sid, grep("response_[0-9]*", colnames(plotDT), value = TRUE))
   plotDT[[setdiff(colnames(plotDT), rCols)]] = NULL
@@ -131,7 +131,7 @@ plotBMRPHMEnsembleDistribution = function(bmr, task, seq.ids = 1) {
 
 #' Plots the prediction density for one seq.id on BMRPHMEnsemble models
 #' @export
-plotBMRPHMEnsemblePrediction = function(bmr, task, seq.id, n.regions = 4) {
+plotBMRPHMEnsemblePrediction = function(bmr, learner.ids, task, seq.id, n.regions = 4) {
   checkTask(task, "PHMRegrTask")
   td = getTaskDesc(task)
   sid = td$seq.id; tid = td$order.by
@@ -141,7 +141,7 @@ plotBMRPHMEnsemblePrediction = function(bmr, task, seq.id, n.regions = 4) {
     seq.id = sample(t_s.ids, 1)
   assertSubset(seq.id, t_s.ids)
   task = subsetTask(task, t_s.ids == seq.id)
-  plotDT = as.data.table( getBMRPHMEnsemblePredictions(bmr, task) )
+  plotDT = as.data.table( getBMRPHMEnsemblePredictions(bmr, learner.ids, task) )
   
   lb_q = seq(0, 0.5, length.out = n.regions+1)[-(n.regions+1)]
   ub_q = seq(0.5, 1, length.out = n.regions+1)[-1]
@@ -170,13 +170,13 @@ plotBMRPHMEnsemblePrediction = function(bmr, task, seq.id, n.regions = 4) {
 #' Compute accuracy table of bmr PHMEnsemble prediction being within given probability bounds
 #' Assumes a Gaussian distribution of predictions
 #' @export
-getBMRPHMEnsembleAccuracy = function(bmr, task, p_range = 0.9, only_last = TRUE) {
+getBMRPHMEnsembleAccuracy = function(bmr, learner.ids, task, p_range = 0.9, only_last = TRUE) {
   checkTask(task, "PHMRegrTask")
   assertNumeric(p_range, 0, 1)
   td = getTaskDesc(task)
   sid = td$seq.id; tid = td$order.by
   
-  predDT = as.data.table( getBMRPHMEnsemblePredictions(bmr, task) )
+  predDT = as.data.table( getBMRPHMEnsemblePredictions(bmr, learner.ids, task) )
   if (only_last)
     predDT = predDT[, .SD[get(tid) == max(get(tid))], by = sid]
   resCols = grep("response_[0-9]*", colnames(predDT), value = TRUE)

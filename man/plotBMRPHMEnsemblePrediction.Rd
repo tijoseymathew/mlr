@@ -4,7 +4,7 @@
 \alias{plotBMRPHMEnsemblePrediction}
 \title{Plots the prediction density for one seq.id on BMRPHMEnsemble models}
 \usage{
-plotBMRPHMEnsemblePrediction(bmr, task, seq.id, n.regions = 4)
+plotBMRPHMEnsemblePrediction(bmr, learner.ids, task, seq.id, n.regions = 4)
 }
 \description{
 Plots the prediction density for one seq.id on BMRPHMEnsemble models
