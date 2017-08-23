@@ -23,7 +23,8 @@ makePHMEnsembleWrapper = function(learner) {
   learner = checkLearner(learner, type = c("phmregr"))
   id = stri_paste(learner$id, "ensembled", sep = ".")
   packs = learner$package
-  makeHomogeneousEnsemble(id, learner$type, learner, packs, learner.subclass = "PHMEnsembleWrapper", model.subclass = "PHMEnsembleModel")
+  ps = makeParamSet(makeFunctionLearnerParam("clust_fn"))
+  makeHomogeneousEnsemble(id, learner$type, learner, packs, learner.subclass = "PHMEnsembleWrapper", model.subclass = "PHMEnsembleModel", par.set = ps)
 }
 
 #' @export
@@ -35,25 +36,22 @@ print.PHMEnsembleModel = function(x, ...) {
 }
 
 #' @export
-trainLearner.PHMEnsembleWrapper = function(.learner, .task, .subset, .weights = NULL, ...) {
+trainLearner.PHMEnsembleWrapper = function(.learner, .task, .subset, .weights = NULL, clust_fn = function(t) unique(t$env$data[[t$task.desc$seq.id]]), ...) {
   
   assertClass(.task, "PHMRegrTask")
   .task = subsetTask(.task, subset = .subset)
-  seq.ids = unique( 
-    getTaskData(.task, features = getTaskDesc(.task)$seq.id, target.extra = TRUE)$data[, 1]
-  )
   
   args = list(task = .task, learner = .learner, weights = .weights)
   parallelLibrary("mlr", master = FALSE, level = "mlr.ensemble", show.info = FALSE)
   exportMlrOptions(level = "mlr.ensemble")
-  models = parallelMap(doPHMEnsembleTrainIteration, seq.ids, more.args = args, level = "mlr.ensemble")
+  models = parallelMap(doPHMEnsembleTrainIteration, clust_fn(.task), more.args = args, level = "mlr.ensemble")
   makeHomChainModel(.learner, models)
 }
 
 doPHMEnsembleTrainIteration = function(seq.id, task, learner, weights) {
   setSlaveOptions()
   sids = getTaskData(task, features = getTaskDesc(task)$seq.id, target.extra = TRUE)$data[, 1]
-  ix = (sids == seq.id)
+  ix = (sids %in% seq.id)
   train(learner$next.learner, task, subset = ix, weights = weights[ix])
 }
 
