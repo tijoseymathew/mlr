@@ -78,6 +78,18 @@ makeResampleInstance = function(desc, task, size, ...) {
     inst$train.inds = lapply(inst$train.inds, function(i) sample(which(blocking %in% levs[i])))
     ti = sample(size)
     inst$test.inds = lapply(inst$train.inds, function(x) setdiff(ti, x))
+    if (!is.null(desc$phm_teFrac)) {
+      assertNumeric(desc$phm_teFrac, lower = 0, upper = 1)
+      assertClass(task, classes = "PHMRegrTask")
+      sid = getRRTaskDesc(task)$seq.id; tid = getRRTaskDesc(task)$order.by
+      inst$test.inds = lapply(inst$test.inds,
+                              function(te_ixs) {
+                                dat = as.data.table( getTaskData(task, subset = te_ixs, features = c(sid, tid)) )
+                                dat[, .add := .SD[[tid]] < runif(1, desc$phm_teFrac, 1)*max(.SD[[tid]]), by=eval(sid)]
+                                te_ixs[dat$.add]
+                              })
+      catf("Test cut at %f", desc$phm_teFrac)
+    }
     inst$size = size
   } else if (desc$stratify || !is.null(desc$stratify.cols)) {
     if (is.null(task))
