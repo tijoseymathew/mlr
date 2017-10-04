@@ -24,7 +24,14 @@ makePHMEnsembleWrapper = function(learner) {
   id = stri_paste(learner$id, "ensembled", sep = ".")
   packs = learner$package
   ps = makeParamSet(makeFunctionLearnerParam("clust_fn"))
-  makeHomogeneousEnsemble(id, learner$type, learner, packs, learner.subclass = "PHMEnsembleWrapper", model.subclass = "PHMEnsembleModel", par.set = ps)
+  
+  lrn = makeBaseWrapper(id = id,
+                        type = "phmregr", next.learner = learner,
+                        par.set = ps,
+                        learner.subclass = "PHMEnsembleWrapper",
+                        model.subclass = "PHMEnsembleModel")
+  lrn$properties = learner$properties
+  return(lrn)
 }
 
 #' @export
@@ -36,7 +43,7 @@ print.PHMEnsembleModel = function(x, ...) {
 }
 
 #' @export
-trainLearner.PHMEnsembleWrapper = function(.learner, .task, .subset, .weights = NULL, clust_fn = function(t) unique(t$env$data[[t$task.desc$seq.id]]), ...) {
+trainLearner.PHMEnsembleWrapper = function(.learner, .task, .subset, .weights = NULL, clust_fn, ...) {
   
   assertClass(.task, "PHMRegrTask")
   .task = subsetTask(.task, subset = .subset)
@@ -44,8 +51,18 @@ trainLearner.PHMEnsembleWrapper = function(.learner, .task, .subset, .weights = 
   args = list(task = .task, learner = .learner, weights = .weights)
   parallelLibrary("mlr", master = FALSE, level = "mlr.ensemble", show.info = FALSE)
   exportMlrOptions(level = "mlr.ensemble")
-  models = parallelMap(doPHMEnsembleTrainIteration, clust_fn(.task), more.args = args, level = "mlr.ensemble")
-  makeHomChainModel(.learner, models)
+  clust_model = clust_fn(.task)
+  models = parallelMap(doPHMEnsembleTrainIteration, clust_model$clusters, more.args = args, level = "mlr.ensemble")
+  
+  m = makeWrappedModel.Learner(learner = .learner, 
+                               learner.model = list(clust_model = clust_model$model,
+                                                    ensemble_models = models),
+                               task.desc = getTaskDesc(.task),
+                               subset = .subset,
+                               features = getTaskFeatureNames(.task),
+                               factor.levels = mlr:::getTaskFactorLevels(.task),
+                               time = 0)
+  makeChainModel(next.model = m, cl = "PHMEnsembleWrapperModel")
 }
 
 doPHMEnsembleTrainIteration = function(seq.id, task, learner, weights) {
@@ -57,13 +74,15 @@ doPHMEnsembleTrainIteration = function(seq.id, task, learner, weights) {
 
 #' @export
 predictLearner.PHMEnsembleWrapper = function(.learner, .model, .newdata, ...) {
-  models = getLearnerModel(.model, more.unwrap = FALSE)
+  mdl = .model$learner.model$next.model$learner.model
+  models = mdl$ensemble_models
   p = asMatrixCols(lapply(models, function(m) {
     predict(m, newdata = .newdata, ...)$data$response
   }))
+  weights = predict(mdl$clust_model, .newdata)
   ret = predict(models[[1]], newdata = .newdata, ...)$data
   ret$response = NULL
-  ret$y = rowMeans(p)
+  ret$y = rowSums(p * weights)
   ret
 }
 
