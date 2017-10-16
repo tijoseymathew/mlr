@@ -101,7 +101,7 @@ plotPHMHI = function(learner, task, hi_functions = "all", seq.ids = "all") {
                         linear = makeHIFunction("linear"),
                         exponential = makeHIFunction("exponential"))
   if ("hi_function" %in% names(getHyperPars(learner)))
-      hi_functions[["learner.par"]] = getHyperPars(learner)$hi_function
+    hi_functions[["learner.par"]] = getHyperPars(learner)$hi_function
   assertList(hi_functions, any.missing = FALSE, types = "function")
   
   td = getTaskDesc(task)
@@ -178,18 +178,18 @@ makeHIFunction = function(type = "rul_scaling", start.n = 1, end.n = 1, scaled =
     x = teDT$RUL
     y = linear(trDT, teDT)
     # Exponential function defintions
-    hi = expression(a*(exp(-b*x+c)-exp(c)))
+    hi = expression(k*(exp(-b*x)-1))
     er = function(p, x, y) {
-      a = p$a; b = p$b; c = p$c
+      k = p$k; b = p$b
       y-eval(hi)
     }
     ja = function(p, x, y) {
-      a = p$a; b = p$b; c = p$c
-      -c(eval(D(hi, "a")), eval(D(hi, "b")), eval(D(hi, "c")))
+      k = p$k; b = p$b
+      -c(eval(D(hi, "k")), eval(D(hi, "b")))
     }
     b_sse = Inf
     for (iter in seq(exp_max_iter)) { # Better initialization can avoid this?
-      nlsFit = nls.lm(par = list(a=runif(1), b=runif(1),c=runif(1)),
+      nlsFit = nls.lm(par = list(k=runif(1), b=runif(1)),
                       fn = er, jac = ja, x = x, y = y,
                       control = nls.lm.control(maxfev = exp_max_iter, maxiter = exp_max_iter))
       sse = sqrt(mean(er(nlsFit$par, x, y)^2))
@@ -200,7 +200,7 @@ makeHIFunction = function(type = "rul_scaling", start.n = 1, end.n = 1, scaled =
     }
     if (b_sse > exp_tol)
       warning(sprintf("Exponential HI did not converge. sse=%.3f", b_sse))
-    a = b_mdl$par$a; b = b_mdl$par$b; c = b_mdl$par$c
+    k = b_mdl$par$k; b = b_mdl$par$b
     eval(hi)
   }
   hiFns = list(rul_scaling = rul_scaling, rul_limiting = rul_limiting,
@@ -222,9 +222,10 @@ makeHIFunction = function(type = "rul_scaling", start.n = 1, end.n = 1, scaled =
       dat[, (cols) := lapply(.SD, scale), .SDcols = cols]
     }
     
-    dat[order(get(tid)), hi := {
+    dat[, hi := {
       # FIXME: Clip start.n and end.n
-      marginDT = rbind(head(.SD, start.n), tail(.SD, end.n))
+      t = .SD[order(get(tid))]
+      marginDT = rbind(head(t, start.n), tail(t, end.n))
       marginDT$hi = rep(c(1, 0), times = c(start.n, end.n))
       marginDT[[tid]] = NULL
       hiFns[[type]](marginDT, .SD, multiplier)
