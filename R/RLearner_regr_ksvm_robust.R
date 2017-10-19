@@ -117,10 +117,14 @@ getKSVMScaling = function(task, scaled) {
 }
 
 KSVMScaling.x = function(model, newdata) {
-  if (any(model$scaled))
+  if (any(model$scaled)) {
+    orig_order = names(newdata)
+    newdata = newdata[, names(model$x.scale$"scaled:center")]
     newdata[,model$scaled] <-
       scale(newdata[,model$scaled, drop = FALSE],
             center = model$x.scale$"scaled:center", scale = model$x.scale$"scaled:scale")
+    newdata[, orig_order]
+  }
   newdata
 }
 
