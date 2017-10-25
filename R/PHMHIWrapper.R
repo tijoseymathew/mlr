@@ -198,8 +198,17 @@ makeHIFunction = function(type = "rul_scaling", start.n = 1, end.n = 1, scaled =
         b_sse = sse
       }
     }
-    if (b_sse > exp_tol)
+    if (b_sse > exp_tol) {
       warning(sprintf("Exponential HI did not converge. sse=%.3f", b_sse))
+      if (length(y) >7) {
+        y_fil = y[order(teDT$.time)]
+        y_fil = filter(y_fil, filter = rep(1/7, 7), method = "convolution", sides = 2)
+        y_fil[1:3] = 1
+        y_fil[(length(y)-2):length(y)] = 0
+        y = y_fil[rank(teDT$.time)]
+      }
+      return(y)
+    }
     k = b_mdl$par$k; b = b_mdl$par$b
     eval(hi)
   }
@@ -228,7 +237,9 @@ makeHIFunction = function(type = "rul_scaling", start.n = 1, end.n = 1, scaled =
       marginDT = rbind(head(t, start.n), tail(t, end.n))
       marginDT$hi = rep(c(1, 0), times = c(start.n, end.n))
       marginDT[[tid]] = NULL
-      hiFns[[type]](marginDT, .SD, multiplier)
+      te = copy(.SD)
+      names(te)[tid == names(te)] = ".time"
+      hiFns[[type]](marginDT, te, multiplier)
     }, by = sid]
     list(hi = dat$hi, hi2rulFn = function(data) multiplier * data$y)
   }
