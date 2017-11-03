@@ -23,7 +23,8 @@ makePHMEnsembleWrapper = function(learner) {
   learner = checkLearner(learner, type = c("phmregr"))
   id = stri_paste(learner$id, "ensembled", sep = ".")
   packs = learner$package
-  ps = makeParamSet(makeFunctionLearnerParam("clust_fn"))
+  ps = makeParamSet(makeFunctionLearnerParam("clust_fn"),
+                    makeUntypedLearnerParam("ens_lrn"))
   
   lrn = makeBaseWrapper(id = id,
                         type = "phmregr", next.learner = learner,
@@ -43,7 +44,7 @@ print.PHMEnsembleModel = function(x, ...) {
 }
 
 #' @export
-trainLearner.PHMEnsembleWrapper = function(.learner, .task, .subset, .weights = NULL, clust_fn, ...) {
+trainLearner.PHMEnsembleWrapper = function(.learner, .task, .subset, .weights = NULL, clust_fn, ens_lrn = NULL, ...) {
   
   assertClass(.task, "PHMRegrTask")
   .task = subsetTask(.task, subset = .subset)
@@ -53,10 +54,26 @@ trainLearner.PHMEnsembleWrapper = function(.learner, .task, .subset, .weights = 
   exportMlrOptions(level = "mlr.ensemble")
   clust_model = clust_fn(.task)
   models = parallelMap(doPHMEnsembleTrainIteration, clust_model$clusters, more.args = args, level = "mlr.ensemble")
+  ens_mdl = NULL
+  tid = .task$task.desc$order.by; sid = .task$task.desc$seq.id
+  if (!is.null(ens_lrn)) {
+    checkLearner(ens_lrn, type = c("phmregr"))
+    p = asMatrixCols(lapply(models, function(m) {
+      predict(m, .task, ...)$data$response
+    }))
+    colnames(p) = paste0("p", 1:ncol(p))
+    ens_tsk = makePHMRegrTask(data=cbind(p, getTaskData(.task, features = c(tid, sid))),
+                              target = getTaskTargetNames(.task), seq.id = sid, order.by = tid)
+    ens_mdl = train(ens_lrn, ens_tsk)
+  }
   
   m = makeWrappedModel.Learner(learner = .learner, 
                                learner.model = list(clust_model = clust_model$model,
-                                                    ensemble_models = models),
+                                                    ensemble_models = models,
+                                                    ens_lrn = ens_lrn,
+                                                    ens_mdl = ens_mdl,
+                                                    order.by = tid,
+                                                    seq.id = sid),
                                task.desc = getTaskDesc(.task),
                                subset = .subset,
                                features = getTaskFeatureNames(.task),
@@ -79,6 +96,11 @@ predictLearner.PHMEnsembleWrapper = function(.learner, .model, .newdata, ...) {
   p = asMatrixCols(lapply(models, function(m) {
     predict(m, newdata = .newdata, ...)$data$response
   }))
+  if (!is.null(mdl$ens_mdl)) {
+    colnames(p) = paste0("p", 1:ncol(p))
+    p = cbind(p, .newdata[, c(mdl$seq.id, mdl$order.by)])
+    return(predictLearner(mdl$ens_lrn, mdl$ens_mdl, p))
+  }
   weights = predict(mdl$clust_model, .newdata)
   ret = predict(models[[1]], newdata = .newdata, ...)$data
   ret$response = NULL
