@@ -34,12 +34,38 @@ trainLearner.PHMStageClassifierWrapper = function(.learner, .task, .subset, .wei
   # Convert to classification task
   dat = getTaskData(task)
   dat$.stage = ifelse(getTaskTargets(task) < target_threshold, ".abnormal", ".normal")
+  if (! any(dat$.stage==".abnormal"))
+    stop("No data for abnormal stage. Consider changing target_threshold!")
   dat = dat[, !names(dat) %in% c(tid, sid, tar)]
   cl_task = makeClassifTask(data = dat, target = ".stage")
   cl_mdl = train(stage_learner, cl_task)
+  # Stage classifier
+  cl_y = do.call( predictLearner,
+                  c( list(.learner = stage_learner,
+                          .model = cl_mdl,
+                          .newdata = dat)) )
+  # Stage filtering
+  dat = getTaskData(task)
+  dat = data.table(s = dat[[sid]],
+                   t = dat[[tid]],
+                   stg = (cl_y == ".abnormal"))
+  dat[, new_y := {
+    d = copy(.SD)
+    d$ix = 1:nrow(.SD)
+    d = d[order(t)]
+    ifelse(cumsum(d$stg) >= stage_window, ".abnormal", ".normal")[order(d$ix)]
+  }, by = s]
+  # FIXME: get actual minimum window required!!!
+  dat[order(t), new_y := {
+    t = rep(".abnormal", .N)
+    if (.N > 30L)
+      t[1:(.N-30L)] = new_y[1:(.N-30L)]
+    t
+  }, by = s]
+  cl_y = dat$new_y
   # PHM task
-  ph_task = subsetTask(task, dat$.stage == ".abnormal")
-  next.mdl = train(.learner$next.learner, ph_task, weights = .weights[dat$.stage == ".abnormal"])
+  ph_task = subsetTask(task, cl_y == ".abnormal")
+  next.mdl = train(.learner$next.learner, ph_task, weights = .weights[cl_y == ".abnormal"])
   
   m = makeWrappedModel.Learner(learner = .learner, 
                                learner.model = list(next.model = next.mdl, 
@@ -77,7 +103,14 @@ predictLearner.PHMStageClassifierWrapper = function(.learner, .model, .newdata, 
     d = copy(.SD)
     d$ix = 1:nrow(.SD)
     d = d[order(t)]
-    ifelse(cumsum(d$stg) >= mdl$stage_window, ".abnormal", ".normal")[d$ix]
+    ifelse(cumsum(d$stg) >= mdl$stage_window, ".abnormal", ".normal")[order(d$ix)]
+  }, by = s]
+  # FIXME: get actual minimum window required!!!
+  dat[order(t), new_y := {
+	  t = rep(".abnormal", .N)
+	  if (.N > 30L)
+		  t[1:(.N-30L)] = new_y[1:(.N-30L)]
+	  t
   }, by = s]
   cl_y = dat$new_y
   
@@ -85,10 +118,11 @@ predictLearner.PHMStageClassifierWrapper = function(.learner, .model, .newdata, 
   ret[[mdl$seq.id]] = .newdata[[mdl$seq.id]]
   ret[[mdl$order.by]] = .newdata[[mdl$order.by]]
   ret[["y"]] = rep(mdl$target_threshold, nrow(.newdata))
-  ret[["y"]][cl_y == ".abnormal"] = do.call( predictLearner,
-                                             c( list(.learner = .learner$next.learner,
-                                                     .model = mdl$next.model,
-                                                     .newdata = .newdata[cl_y == ".abnormal", , drop=FALSE]),
-                                                args) )$y
+  if (any(cl_y == ".abnormal"))
+    ret[["y"]][cl_y == ".abnormal"] = do.call( predictLearner,
+                                               c( list(.learner = .learner$next.learner,
+                                                       .model = mdl$next.model,
+                                                       .newdata = .newdata[cl_y == ".abnormal", , drop=FALSE]),
+                                                  args) )$y
   data.frame(ret)
 }
