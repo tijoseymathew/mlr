@@ -6,9 +6,7 @@
 makePHMStageClassifierWrapper = function(learner) {
   checkLearner(learner, "phmregr")
   ps = makeParamSet(
-    makeUntypedLearnerParam("stage_learner", tunable = FALSE, default = makeLearner("classif.ksvm")),
-    makeNumericLearnerParam("target_threshold"),
-    makeIntegerLearnerParam("stage_window")
+    makeUntypedLearnerParam("stage_learner", tunable = FALSE, default = stagePCAChangePoint)
   )
   lrn = makeBaseWrapper(id = paste(learner$id, "stgClass", sep = "."),
                         type = "phmregr", next.learner = learner,
@@ -21,60 +19,22 @@ makePHMStageClassifierWrapper = function(learner) {
 
 #' @export
 trainLearner.PHMStageClassifierWrapper = function(.learner, .task, .subset, .weights = NULL, 
-                                                  stage_learner = makeLearner("classif.ksvm"), 
-                                                  target_threshold, # Target below this threshold is considered abnormal
-                                                  stage_window, ...) {
+                                                  stage_learner = stagePCAChangePoint, # Returns a model and named list of subsets for each stage. A predict method for model will return subset for each model
+                                                  ...) {
   assertClass(.task, "PHMRegrTask")
-  checkLearner(stage_learner, "classif")
-  assertInteger(stage_window)
-  assertNumeric(target_threshold)
   
   task = subsetTask(.task, .subset)
-  tid = task$task.desc$order.by; sid = task$task.desc$seq.id; tar = task$task.desc$target
-  # Convert to classification task
-  dat = getTaskData(task)
-  dat$.stage = ifelse(getTaskTargets(task) < target_threshold, ".abnormal", ".normal")
-  if (! any(dat$.stage==".abnormal"))
-    stop("No data for abnormal stage. Consider changing target_threshold!")
-  dat = dat[, !names(dat) %in% c(tid, sid, tar)]
-  cl_task = makeClassifTask(data = dat, target = ".stage")
-  cl_mdl = train(stage_learner, cl_task)
-  # Stage classifier
-  cl_y = do.call( predictLearner,
-                  c( list(.learner = stage_learner,
-                          .model = cl_mdl,
-                          .newdata = dat)) )
-  # Stage filtering
-  dat = getTaskData(task)
-  dat = data.table(s = dat[[sid]],
-                   t = dat[[tid]],
-                   stg = (cl_y == ".abnormal"))
-  dat[, new_y := {
-    d = copy(.SD)
-    d$ix = 1:nrow(.SD)
-    d = d[order(t)]
-    ifelse(cumsum(d$stg) >= stage_window, ".abnormal", ".normal")[order(d$ix)]
-  }, by = s]
-  # FIXME: get actual minimum window required!!!
-  dat[order(t), new_y := {
-    t = rep(".abnormal", .N)
-    if (.N > 30L)
-      t[1:(.N-30L)] = new_y[1:(.N-30L)]
-    t
-  }, by = s]
-  cl_y = dat$new_y
-  # PHM task
-  ph_task = subsetTask(task, cl_y == ".abnormal")
-  next.mdl = train(.learner$next.learner, ph_task, weights = .weights[cl_y == ".abnormal"])
+  # Stage detection
+  stage_obj = stage_learner(task)
+  # FIXME: Ensure subsets are consecutive sections of data?
+  next.mdls = lapply(stage_obj$subsets, function(s) train(learner = .learner$next.learner,
+                                                          task = task,
+                                                          subset = s,
+                                                          weights = .weights[s]))
   
   m = makeWrappedModel.Learner(learner = .learner, 
-                               learner.model = list(next.model = next.mdl, 
-                                                    cl_lrn = stage_learner,
-                                                    cl_mdl = cl_mdl,
-                                                    seq.id = sid,
-                                                    order.by = tid,
-                                                    stage_window = stage_window,
-                                                    target_threshold = target_threshold),
+                               learner.model = list(next.model = next.mdls,
+                                                    stage.model = stage_obj$model),
                                task.desc = getTaskDesc(.task),
                                subset = .subset,
                                features = getTaskFeatureNames(.task),
@@ -88,41 +48,50 @@ predictLearner.PHMStageClassifierWrapper = function(.learner, .model, .newdata, 
   args = removeFromDots(names(.learner$par.vals), ...)
   mdl = .model$learner.model$next.model$learner.model
   
-  # Stage classifier
-  cl_dat = .newdata[, !names(.newdata) %in% c(mdl$order.by, mdl$seq.id)]
-  cl_y = do.call( predictLearner,
-                  c( list(.learner = mdl$cl_lrn,
-                          .model = mdl$cl_mdl,
-                          .newdata = cl_dat),
-                     args) )
-  # Stage filtering
-  dat = data.table(s = .newdata[[mdl$seq.id]],
-                   t = .newdata[[mdl$order.by]],
-                   stg = (cl_y == ".abnormal"))
-  dat[, new_y := {
-    d = copy(.SD)
-    d$ix = 1:nrow(.SD)
-    d = d[order(t)]
-    ifelse(cumsum(d$stg) >= mdl$stage_window, ".abnormal", ".normal")[order(d$ix)]
-  }, by = s]
-  # FIXME: get actual minimum window required!!!
-  dat[order(t), new_y := {
-	  t = rep(".abnormal", .N)
-	  if (.N > 30L)
-		  t[1:(.N-30L)] = new_y[1:(.N-30L)]
-	  t
-  }, by = s]
-  cl_y = dat$new_y
+  # Stage detector
+  stage_subsets = predict(mdl$stage.model, .newdata)
+  ret = lapply(names(mdl$next.model), 
+               function(stage) {
+                 if (!is.null(stage_subsets[stage]))
+                   do.call( predictLearner,
+                            c( list(.learner = .learner$next.learner,
+                                    .model = mdl$next.model[[stage]],
+                                    .newdata = .newdata[stage_subsets[[stage]], ]),
+                               args) )
+               })
+  ret = do.call(rbind, ret)
+  ret[order(unlist(stage_subsets)), ]
+}
+
+#' @export
+stagePCAChangePoint = function(task) {
+  td = getTaskDesc(task)
+  tid = td$order.by; sid = td$seq.id; tar = td$target
   
-  ret = list()
-  ret[[mdl$seq.id]] = .newdata[[mdl$seq.id]]
-  ret[[mdl$order.by]] = .newdata[[mdl$order.by]]
-  ret[["y"]] = rep(mdl$target_threshold, nrow(.newdata))
-  if (any(cl_y == ".abnormal"))
-    ret[["y"]][cl_y == ".abnormal"] = do.call( predictLearner,
-                                               c( list(.learner = .learner$next.learner,
-                                                       .model = mdl$next.model,
-                                                       .newdata = .newdata[cl_y == ".abnormal", , drop=FALSE]),
-                                                  args) )$y
-  data.frame(ret)
+  dat = as.data.table(getTaskData(task))
+  datMat = as.matrix(dat[, setdiff(names(dat), c(tid, sid, tar)), with=F])
+  
+  pca_mdl = prcomp(datMat, center = T, scale. = T)
+  
+  mdl = makeS3Obj(classes = "stagePCACP", seq.id=sid, order.by=tid, pca_mdl = pca_mdl)
+  list(model = mdl, 
+       subsets = predict(mdl, dat))
+}
+#' @export
+predict.stagePCACP = function(obj, data) {
+  data = as.data.table(data)
+  datMat = as.matrix(data[, setdiff(names(data), c(obj$order.by, obj$seq.id)), , with=F])
+  data$PC1 = predict(obj$pca_mdl, datMat)[, "PC1"]
+  
+  cptFn = function(x) {
+    mdl = cpt.mean(x, penalty="SIC", method="AMOC", class=FALSE)
+    ret = rep("Stage1", length(x))
+    if (mdl[["conf.value"]] > .5)
+      ret[mdl[["cpt"]]:length(x)] = "Stage2"
+    ret
+  }
+  
+  data[, stage := cptFn(.SD[order(get(obj$order.by)), PC1]), by = get(obj$seq.id)]
+  list(Stage1 = which(data$stage == "Stage1"),
+       Stage2 = which(data$stage == "Stage2"))
 }
