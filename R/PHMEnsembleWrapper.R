@@ -104,7 +104,7 @@ predictLearner.PHMEnsembleWrapper = function(.learner, .model, .newdata, ...) {
   weights = predict(mdl$clust_model, .newdata)
   ret = predict(models[[1]], newdata = .newdata, ...)$data
   ret$response = NULL
-  ret$y = rowSums(p * weights)
+  ret$y = rowSums(p * weights, na.rm = TRUE)
   ret
 }
 
