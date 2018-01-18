@@ -159,13 +159,13 @@ plotPHMHI = function(learner, task, hi_functions = "all", seq.ids = "all") {
 #'   Maximum number of iteration for exponential function with random initializations
 #' @export
 makeHIFunction = function(type = "rul_scaling", start.n = 1, end.n = 1, scaled = TRUE, multiplier = NULL,
-                          exp_tol = 0.3, exp_max_iter = 100) {
+                          exp_tol = 0.3, rPredict = "multiplier") {
   # Per unit HI functions (for one seq.id, in sorted order.by)
   # Both data tables contain RUL column which may or may not be used
   #> trDT : Data table of ends with column hi to be used for training and rest as features
   #> teDT : Data table with features
   rul_scaling = function(trDT, teDT, multiplier) {
-    teDT$RUL/max(teDT$RU)
+    teDT$RUL/max(teDT$RUL)
   }
   rul_limiting = function(trDT, teDT, multiplier) {
     sapply(teDT$RUL, min, multiplier)/multiplier
@@ -175,42 +175,39 @@ makeHIFunction = function(type = "rul_scaling", start.n = 1, end.n = 1, scaled =
     predict(mdl, teDT)
   }
   exponential = function(trDT, teDT, multiplier) {
-    x = teDT$RUL
+    x = teDT$.time
     y = linear(trDT, teDT)
-    # Exponential function defintions
-    hi = expression(k*(exp(-b*x)-1))
+    expFit(x[order(x)], y[order(x)])$value[rank(x)]
+  }
+  expFit = function(x, y) { # x, y should be ordered for filter!
+    hi = expression(k*(exp(c)-exp(b*x-c)))
     er = function(p, x, y) {
-      k = p$k; b = p$b
+      k = p$k; b = p$b; c = p$c
       y-eval(hi)
     }
     ja = function(p, x, y) {
-      k = p$k; b = p$b
-      -c(eval(D(hi, "k")), eval(D(hi, "b")))
+      k = p$k; b = p$b; c = p$c
+      -c(eval(D(hi, "k")), eval(D(hi, "b")), eval(D(hi, "c")))
     }
-    b_sse = Inf
-    for (iter in seq(exp_max_iter)) { # Better initialization can avoid this?
-      nlsFit = nls.lm(par = list(k=runif(1), b=runif(1)),
-                      fn = er, jac = ja, x = x, y = y,
-                      control = nls.lm.control(maxfev = exp_max_iter, maxiter = exp_max_iter))
-      sse = sqrt(mean(er(nlsFit$par, x, y)^2))
-      if (!is.na(sse) & sse < b_sse) {
-        b_mdl = nlsFit
-        b_sse = sse
+    nlsFit = nls.lm(par = list(k=runif(1, 0, .3), b=1/(0.39*max(x)), c=1),
+                    fn = er, jac = ja, x = x, y = y, control = nls.lm.control(maxiter = 1000))
+    sse = sqrt(mean(er(nlsFit$par, x, y)^2))
+    if (sse > exp_tol) {
+      if (length(y) > 7 ) {
+        y = filter(y, filter = rep(1/7, 7), method = "convolution", sides = 2)
+        y[1:3] = 1
+        y[(length(y)-2):length(y)] = 0
       }
+      nlsFit = nls.lm(par = list(k=runif(1, 0, .3), b=1/(0.39*max(x)), c=1),
+                      fn = er, jac = ja, x = x, y = y, control = nls.lm.control(maxiter = 1000))
+      sseN = sqrt(mean(er(nlsFit$par, x, y)^2))
+      if (sseN > exp_tol) {
+        warning(sprintf("Exponential HI did not converge even after filtering. sse_pre=%.3f, sse_post=%.3f", sse, sseN)) 
+      } else
+        warning(sprintf("Filtering performed for Exponential HI to converge. sse_pre=%.3f, sse_post=%.3f", sse, sseN))
     }
-    if (b_sse > exp_tol) {
-      warning(sprintf("Exponential HI did not converge. sse=%.3f", b_sse))
-      if (length(y) >7) {
-        y_fil = y[order(teDT$.time)]
-        y_fil = filter(y_fil, filter = rep(1/7, 7), method = "convolution", sides = 2)
-        y_fil[1:3] = 1
-        y_fil[(length(y)-2):length(y)] = 0
-        y = y_fil[rank(teDT$.time)]
-      }
-      return(y)
-    }
-    k = b_mdl$par$k; b = b_mdl$par$b
-    eval(hi)
+    k = nlsFit$par$k; b = nlsFit$par$b; c = nlsFit$par$c
+    list(value=eval(hi), x0 = 2*c/b, sse = sse)
   }
   hiFns = list(rul_scaling = rul_scaling, rul_limiting = rul_limiting,
                linear = linear, exponential = exponential)
@@ -241,6 +238,19 @@ makeHIFunction = function(type = "rul_scaling", start.n = 1, end.n = 1, scaled =
       names(te)[tid == names(te)] = ".time"
       hiFns[[type]](marginDT, te, multiplier)
     }, by = sid]
-    list(hi = dat$hi, hi2rulFn = function(data) multiplier * data$y)
+    hi2rulFn = function(data) multiplier * data$y
+    if (type == "exponential" & rPredict == "estimate") {
+      hi2rulFn = function(data) {
+        data = as.data.table(data)
+        data[order(get(tid)), {
+          hiMdl = expFit(get(tid), y)
+          if (hiMdl$sse > exp_tol) {
+            y * multiplier
+          } else
+            hiMdl$x0 - get(tid)
+        }, by = sid]$V1
+      }
+    }
+    list(hi = dat$hi, hi2rulFn = hi2rulFn)
   }
 }

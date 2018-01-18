@@ -5,7 +5,8 @@
 \title{HI model functions for PHMHIWrapper}
 \usage{
 makeHIFunction(type = "rul_scaling", start.n = 1, end.n = 1,
-  scaled = TRUE, multiplier = NULL, exp_tol = 0.3, exp_max_iter = 100)
+  scaled = TRUE, multiplier = NULL, exp_tol = 0.3,
+  rPredict = "multiplier")
 }
 \arguments{
 \item{type}{[\code{character(1)}]\cr

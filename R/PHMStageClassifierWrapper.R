@@ -55,7 +55,7 @@ predictLearner.PHMStageClassifierWrapper = function(.learner, .model, .newdata, 
     stopf("Stage function should have all subsets without common elements!")
   ret = lapply(names(mdl$next.model), 
                function(stage) {
-                 if (!is.null(stage_subsets[stage]))
+                 if (length(stage_subsets[[stage]]) > 0)
                    do.call( predictLearner,
                             c( list(.learner = .learner$next.learner,
                                     .model = mdl$next.model[[stage]],
