@@ -96,7 +96,7 @@ predict.stagePCACP = function(obj, data) {
     ret
   }
   
-  data[, stage := cptFn(.SD[order(get(obj$order.by)), PC1]), by = get(obj$seq.id)]
+  data[order(get(obj$order.by)), stage := cptFn(PC1), by = get(obj$seq.id)]
   list(Stage1 = which(data$stage == "Stage1"),
        Stage2 = which(data$stage == "Stage2"))
 }
